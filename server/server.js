@@ -7,24 +7,48 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 
 const connectDB = require('./config/database');
+const { initializeSensors } = require('./services/sensorInitializer');
+const BackendSensorSimulator = require('./services/backendSensorSimulator');
 
 // Initialize Express app
 const app = express();
 const server = http.createServer(app);
 
 // Initialize Socket.IO
+const allowedOrigins = [
+  process.env.FRONTEND_URL,
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  'http://0.0.0.0:3000'
+].filter(Boolean);
+
 const io = socketIo(server, {
+  path: '/socket.io',
   cors: {
-    origin: process.env.FRONTEND_URL || "http://localhost:3000",
-    methods: ["GET", "POST"]
-  }
+    origin: (origin, callback) => {
+      // Allow no-origin (mobile apps, curl) and dev localhost variants
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      if (process.env.NODE_ENV !== 'production') return callback(null, true);
+      return callback(new Error('Not allowed by CORS'));
+    },
+    methods: ["GET", "POST", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: true
+  },
+  // Increase timeouts to avoid premature disconnects on slower networks
+  pingTimeout: 30000,
+  pingInterval: 25000
 });
 
 // Connect to MongoDB
 connectDB();
 
-// Security middleware
-app.use(helmet());
+// Security middleware (relaxed for WebSocket cross-origin access)
+app.use(helmet({
+  crossOriginResourcePolicy: false,
+  crossOriginEmbedderPolicy: false
+}));
 
 // Rate limiting
 const limiter = rateLimit({
@@ -39,7 +63,14 @@ app.use('/api/', limiter);
 
 // CORS configuration
 app.use(cors({
-  origin: process.env.FRONTEND_URL || "http://localhost:3000",
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    if (process.env.NODE_ENV !== 'production') return callback(null, true);
+    return callback(new Error('Not allowed by CORS'));
+  },
+  methods: ["GET", "POST", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true
 }));
 
@@ -61,6 +92,7 @@ app.get('/health', (req, res) => {
 app.use('/api/sensors', require('./routes/sensors'));
 app.use('/api/alerts', require('./routes/alerts'));
 app.use('/api/readings', require('./routes/sensorReadings'));
+app.use('/api/sensor-data', require('./routes/sensorData')); // New historical data route
 
 // Socket.IO handlers
 require('./socket/socketHandlers')(io);
@@ -102,10 +134,30 @@ app.use('*', (req, res) => {
 
 const PORT = process.env.PORT || 5000;
 
-server.listen(PORT, () => {
+server.listen(PORT, async () => {
   console.log(`🚀 GeoSafe AI Server running on port ${PORT}`);
   console.log(`📊 Environment: ${process.env.NODE_ENV}`);
   console.log(`🌐 Frontend URL: ${process.env.FRONTEND_URL}`);
+  
+  // Initialize sensors in database if needed
+  try {
+    await initializeSensors();
+  } catch (error) {
+    console.error('Failed to initialize sensors:', error);
+  }
+  
+  // Start backend sensor simulation
+  try {
+    const sensorSimulator = new BackendSensorSimulator(io);
+    await sensorSimulator.startSimulation();
+    
+    // Make simulator available globally for management
+    app.set('sensorSimulator', sensorSimulator);
+    
+    console.log('✅ Backend sensor simulation started');
+  } catch (error) {
+    console.error('❌ Failed to start sensor simulation:', error);
+  }
 });
 
 // Export for testing

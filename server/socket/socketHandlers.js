@@ -1,13 +1,15 @@
 const Alert = require('../models/Alert');
 const Sensor = require('../models/Sensor');
 const SensorReading = require('../models/SensorReading');
+const { getPrediction } = require('../services/aiService');
 
 module.exports = (io) => {
   // Store connected clients with their roles
   const connectedClients = new Map();
   
   io.on('connection', (socket) => {
-    console.log(`Client connected: ${socket.id}`);
+    console.log(`🟢 Client connected: ${socket.id} from ${socket.request.connection.remoteAddress}`);
+    console.log(`📊 Total connected clients: ${io.sockets.sockets.size}`);
     
     // Handle client authentication and role assignment
     socket.on('authenticate', (data) => {
@@ -116,6 +118,126 @@ module.exports = (io) => {
       } catch (error) {
         console.error('Error processing risk assessment request:', error);
         socket.emit('error', { message: 'Failed to process risk assessment' });
+      }
+    });
+    
+    // Handle new sensor reading from frontend simulation
+    socket.on('new-sensor-reading', async (data) => {
+      try {
+        const { sensorId, timestamp, readings } = data;
+        console.log(`📡 Received sensor reading from frontend: ${sensorId}`);
+        
+        // Get AI prediction for this reading
+        const aiPrediction = await getPrediction({
+          sensorId,
+          timestamp,
+          readings
+        });
+        
+        console.log(`🤖 AI prediction for ${sensorId}: ${aiPrediction.level} (${aiPrediction.confidence})`);
+        
+        // Create and save sensor reading to database
+        const sensorReading = new SensorReading({
+          sensorId: sensorId.toUpperCase(),
+          timestamp: new Date(timestamp),
+          readings,
+          riskPrediction: {
+            level: aiPrediction.level,
+            confidence: aiPrediction.confidence,
+            factors: aiPrediction.factors || ['Rainfall_mm', 'Slope_Angle', 'Soil_Saturation'],
+            aiModelVersion: '1.0',
+            processingTime: 30 // Mock processing time
+          },
+          dataQuality: {
+            completeness: 0.95 + Math.random() * 0.05,
+            anomalies: []
+          },
+          metadata: {
+            source: 'SIMULATION',
+            processed: true,
+            processedAt: new Date()
+          }
+        });
+        
+        // Save to database for historical analysis
+        const savedReading = await sensorReading.save();
+        console.log(`💾 Sensor reading saved to database: ${savedReading._id}`);
+        
+        // Update sensor's last reading timestamp
+        await Sensor.findOneAndUpdate(
+          { sensorId: sensorId.toUpperCase() },
+          { lastReading: new Date(timestamp) },
+          { upsert: false }
+        );
+        
+        // Broadcast risk update to all clients
+        io.broadcastRiskUpdate({
+          sensorId,
+          riskLevel: aiPrediction.level,
+          confidence: aiPrediction.confidence,
+          location: null, // Will be filled by client
+          timestamp: new Date()
+        });
+        
+        // Send sensor reading back to frontend
+        socket.emit('sensor-reading', {
+          sensorId,
+          reading: {
+            _id: savedReading._id,
+            sensorId: savedReading.sensorId,
+            timestamp: savedReading.timestamp,
+            readings: savedReading.readings,
+            riskPrediction: savedReading.riskPrediction,
+            dataQuality: savedReading.dataQuality,
+            metadata: savedReading.metadata
+          }
+        });
+        
+        // Generate and save alert if high risk
+        if (aiPrediction.level === 'HIGH') {
+          const sensor = await Sensor.findOne({ sensorId: sensorId.toUpperCase() });
+          if (sensor) {
+            const alert = new Alert({
+              sensorId: sensor.sensorId,
+              sensorReadingId: savedReading._id,
+              riskLevel: aiPrediction.level,
+              confidence: aiPrediction.confidence,
+              triggeredAt: new Date(),
+              status: 'ACTIVE',
+              priority: 'CRITICAL',
+              alertType: 'ROCKFALL_RISK',
+              location: sensor.location,
+              affectedArea: {
+                radius: 200,
+                riskZone: 'IMMEDIATE'
+              },
+              triggerFactors: aiPrediction.factors.map(factor => ({
+                factor,
+                value: readings[factor] || 0,
+                threshold: sensor.configuration?.alertThresholds?.[factor] || 0,
+                severity: aiPrediction.level
+              }))
+            });
+            
+            // Save alert to database
+            const savedAlert = await alert.save();
+            console.log(`🚨 Alert saved to database: ${savedAlert.alertId}`);
+            
+            // Broadcast alert
+            io.broadcastAlert({
+              alert: savedAlert,
+              sensor,
+              urgent: true
+            });
+          }
+        }
+        
+      } catch (error) {
+        console.error('Error processing new sensor reading:', error);
+        socket.emit('error', { 
+          message: 'Failed to process sensor reading',
+          details: error.message 
+        });
       }
     });
     

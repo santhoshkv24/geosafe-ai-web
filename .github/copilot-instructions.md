@@ -1,4 +1,7 @@
+````instructions
 # GeoSafe AI - Copilot Instructions
+
+**IMPORTANT**: Always use Sequential Thinking (`mcp_sequentialthi_sequentialthinking`) for complex analysis and Context7 MCP server (`mcp_context7_resolve-library-id` and `mcp_context7_get-library-docs`) for up-to-date library documentation when working on this codebase.
 
 ## Project Overview
 GeoSafe AI is a real-time monitoring and alert system for preventing rockfall accidents in open-pit mines. The system transforms mine safety from reactive to proactive through AI-driven geological risk prediction and instant operator alerts.
@@ -12,147 +15,199 @@ GeoSafe AI is a real-time monitoring and alert system for preventing rockfall ac
 
 **Focus Area**: Web application layer (React + Node.js + MongoDB) - NOT the Python AI microservice
 
-### Expected Directory Structure
+### Actual Directory Structure
 ```
 /
-├── client/              # React frontend application
+├── client/                      # React frontend (CRA TypeScript)
 │   ├── src/
-│   │   ├── components/  # React components
-│   │   ├── pages/       # Page-level components
-│   │   ├── hooks/       # Custom React hooks
-│   │   ├── services/    # API communication layer
-│   │   └── utils/       # Utility functions
-├── server/              # Node.js backend
-│   ├── routes/          # Express route handlers
-│   ├── models/          # MongoDB schemas
-│   ├── middleware/      # Express middleware
-│   ├── services/        # Business logic layer
-│   └── socket/          # WebSocket handlers
-└── shared/              # Shared types/utilities
-```
-
-## Technology Stack & Key Libraries
-
-### Frontend (React)
-- **Leaflet.js**: Geospatial mapping for mine site visualization
-- **Socket.IO Client**: Real-time communication for instant alerts
-- **Axios**: HTTP client for API communication
-- **React**: Component-based UI framework
-
-### Backend (Node.js)
-- **Express.js**: Web application framework
-- **Socket.IO**: WebSocket implementation for real-time features
-- **Mongoose**: MongoDB object modeling
-- **MongoDB**: Primary database for sensor data and configurations
-
-## Domain-Specific Patterns
-
-### Geospatial Data Handling
-- Use GeoJSON format for mine boundary and sensor location data
-- Implement coordinate system transformations (lat/lng to mine grid coordinates)
-- Handle map clustering for dense sensor deployments
-
-### Real-Time Risk Monitoring
-- WebSocket event pattern: `risk-update`, `alert-trigger`, `sensor-status`
-- Risk levels: `LOW`, `MEDIUM`, `HIGH` with color coding (Green/Yellow/Red)
-- Alert priority system with escalation thresholds
-
-### Sensor Data Management
-```javascript
-// Current sensor data structure (Updated September 2025)
-{
-  sensorId: "SENSOR_001",
-  location: { lat: -23.5505, lng: -46.6333 },
-  timestamp: "2025-09-23T10:30:00Z",
-  readings: {
-    Rainfall_mm: 45.2,
-    Slope_Angle: 58.7,
-    Soil_Saturation: 0.65,
-    Vegetation_Cover: 0.4,
-    Earthquake_Activity: 1.2,
-    Proximity_to_Water: 150,
-    Landslide: 0.3,
-    Soil_Type_Gravel: false,
-    Soil_Type_Sand: true,
-    Soil_Type_Silt: false
-  },
-  riskPrediction: {
-    level: "MEDIUM",
-    confidence: 0.87,
-    factors: ["Rainfall_mm", "Slope_Angle", "Soil_Saturation"]
-  }
-}
+│   │   ├── components/         # MapComponent.tsx, SensorPanel.tsx
+│   │   ├── services/           # api.ts, socket.ts, simulation.ts
+│   │   ├── types/              # index.ts (comprehensive TypeScript definitions)
+│   │   └── hooks/              # Custom React hooks (empty)
+├── server/                     # Node.js backend
+│   ├── routes/                 # alerts.js, sensors.js, sensorReadings.js
+│   ├── models/                 # Alert.js, Sensor.js, SensorReading.js
+│   ├── services/               # aiService.js, backendSensorSimulator.js, sensorInitializer.js
+│   ├── socket/                 # socketHandlers.js
+│   └── config/                 # database.js
+└── prd.txt                     # Project Requirements Document
 ```
 
 ## Development Workflows
 
-### API Communication Pattern
-- Frontend ↔ Node.js Backend: REST + WebSockets
-- Node.js ↔ Python AI Service: REST API calls to `/predict` endpoint
-- Use environment variables for service URLs and API keys
+### Getting Started (Full Stack)
+```bash
+# Terminal 1 - Backend
+cd server
+npm install
+cp .env.example .env  # Configure MongoDB URI and AI service URL
+npm run dev           # Starts on :5000 with auto-sensor simulation
 
-### State Management
-- Use React Context for global state (alerts, sensor data)
-- Implement optimistic updates for real-time data
-- Cache geospatial data to avoid repeated map reloads
+# Terminal 2 - Frontend  
+cd client
+npm install
+npm start            # Starts on :3000 with proxy to backend
 
-### Database Schema Patterns
-- **Sensors**: Location, configuration, last reading timestamp
-- **Alerts**: Risk level, triggered timestamp, acknowledged status
-- **SensorReadings**: Time-series data with automated cleanup policies
+# Required: Python AI service on :8000 (external microservice)
+```
 
-## Key Integration Points
+### Critical Environment Variables
+```bash
+# server/.env
+MONGODB_URI=mongodb://localhost:27017/geosafe-ai
+AI_SERVICE_URL=http://localhost:8000
+FRONTEND_URL=http://localhost:3000
+NODE_ENV=development
+```
 
-### Real-Time Alert Flow
-1. Sensor data arrives at Node.js backend
-2. Backend forwards to Python AI service via `/predict` endpoint
-3. AI prediction triggers WebSocket emission to frontend
-4. Frontend displays instant visual alert on map interface
+### Database Initialization
+- `server/services/sensorInitializer.js` auto-creates sensors on startup
+- Uses MongoDB with 2dsphere geospatial indexes
+- Sensor locations are hardcoded for Southern India mining areas
 
-### Map-Based UI Patterns
-- Sensor icons with dynamic color coding based on risk levels
-- Click handlers for sensor details modal/sidebar
-- Alert animations (flashing icons, toast notifications)
-- Zoom-to-alert functionality for immediate operator focus
+## Critical Implementation Patterns
 
-## Error Handling & Resilience
+### Sensor ID Convention
+**CRITICAL**: All sensor IDs are normalized to UPPERCASE throughout the system
+```javascript
+// Backend always stores and queries uppercase
+sensorId: sensorId.toUpperCase()
 
-### API Failure Patterns
-- Graceful degradation when AI service is unavailable
-- Fallback to last-known risk levels during service outages
-- Implement retry logic with exponential backoff for critical predictions
+// Frontend must send uppercase to match
+const sensorData = { sensorId: "SENSOR_001" }; // Correct format
+```
 
-### Real-Time Connection Management
-- Auto-reconnection for WebSocket disconnections
-- Heartbeat mechanism to detect connection health
-- Queue critical alerts during connection interruptions
+### Coordinate System (GeoJSON Standard)
+**CRITICAL**: Uses [longitude, latitude] format, NOT [lat, lng]
+```javascript
+// Correct GeoJSON format
+location: {
+  type: "Point", 
+  coordinates: [75.7139, 15.3173] // [lng, lat]
+}
+
+// Access via virtuals in Mongoose
+sensor.lat  // 15.3173
+sensor.lng  // 75.7139
+```
+
+### Dual State Management Pattern
+The frontend handles both simulated AND real backend data with complex synchronization:
+
+```javascript
+// App.tsx pattern - preserve WebSocket risk levels during HTTP refresh
+const currentRiskLevels = new Map(currentSensors.map(s => [s.sensorId, s.riskLevel]));
+const processedData = backendData.map(sensor => ({
+  ...sensor,
+  riskLevel: currentRiskLevels.get(sensor.sensorId) || 'LOW' // Preserve WebSocket updates
+}));
+```
+
+### WebSocket Integration Pattern
+- Singleton service (`services/socket.ts`) with exponential backoff reconnection
+- Complex event handling for `sensor-reading`, `risk-update`, `alert-trigger`
+- Authentication required: `socket.emit('authenticate', { role: 'operator', userId, name })`
+
+### AI Service Integration
+Backend `services/aiService.js` handles:
+- Retry logic with exponential backoff (3 attempts)
+- Payload transformation (snake_case ↔ PascalCase)
+- Fallback predictions when AI service unavailable
+- Batch prediction support (max 50 readings)
+
+## Database Schema Patterns
+
+### MongoDB Indexes
+```javascript
+// Critical geospatial index
+sensorSchema.index({ location: '2dsphere' });
+
+// Query patterns
+Sensor.find({ location: { $near: { $geometry: { type: "Point", coordinates: [lng, lat] } } } })
+```
+
+### Virtual Fields Pattern
+```javascript
+// Mongoose virtuals for coordinate access
+sensorSchema.virtual('lat').get(function() { return this.location.coordinates[1]; });
+sensorSchema.virtual('lng').get(function() { return this.location.coordinates[0]; });
+```
+
+## Real-Time Alert Flow
+1. `BackendSensorSimulator` generates sensor data every 30s
+2. Data sent to Python AI service `/predict` endpoint
+3. AI prediction triggers WebSocket `risk-update` event
+4. Frontend updates sensor risk levels in real-time
+5. HIGH risk generates Alert document and `alert-trigger` event
+
+### WebSocket Event Patterns
+```javascript
+// Key events to handle
+socket.on('sensor-reading', ({ sensorId, reading, sensor }) => { /* Update sensor data */ });
+socket.on('risk-update', ({ sensorId, riskLevel, confidence }) => { /* Update risk display */ });
+socket.on('alert-trigger', ({ alert, sensor, sensorReading }) => { /* Show alert */ });
+socket.on('critical-alert', ({ alert, sensor, urgent }) => { /* Priority alert */ });
+```
+
+## Domain-Specific Patterns
+
+### Geospatial Data Handling
+- Mine boundary visualization with L.circle (2km radius)
+- Sensor clustering for dense deployments
+- Southern India coordinate system (Karnataka region)
+- GeoJSON Point geometry for all locations
+
+### Risk Level State Management
+```javascript
+// Risk level color mapping (consistent across app)
+const riskColors = {
+  'LOW': '#2ecc71',      // Green
+  'MEDIUM': '#f39c12',   // Orange  
+  'HIGH': '#e74c3c'      // Red
+};
+
+// Icon patterns for map markers
+HIGH: '!', MEDIUM: '⚠', LOW: '✓'
+```
+
+### Alert Escalation System
+- Automatic escalation after time thresholds
+- Priority levels: LOW → MEDIUM → HIGH → CRITICAL
+- Socket event: `alert-escalated` with escalation level
+
+## Error Handling & Debugging
+
+### WebSocket Debugging
+```javascript
+// Enable detailed logging
+localStorage.setItem('debug', 'socket.io-client:*');
+
+// Check connection status
+socketService.isConnected()
+socketService.getSocket()?.connected
+```
+
+### Common Issues
+1. **Coordinate confusion**: Always use [lng, lat] for GeoJSON
+2. **Case sensitivity**: Sensor IDs must be UPPERCASE
+3. **WebSocket state sync**: Risk levels can be overwritten by HTTP refreshes
+4. **AI service timeout**: Backend has 30s timeout with 3 retries
 
 ## Performance Considerations
+- Sensor data refresh every 30s via HTTP + real-time WebSocket updates
+- Map marker clustering for 20+ sensors
+- MongoDB aggregation for dashboard analytics
+- Frontend simulation service manages local state cache
 
-### Map Optimization
-- Implement sensor clustering for high-density areas
-- Lazy load historical data on demand
-- Use map bounds to limit active sensor polling
+## Security & Rate Limiting
+- Express rate limiting: 100 requests per 15 minutes per IP
+- CORS configured for development (relaxed) and production (strict)
+- Helmet security middleware with WebSocket compatibility
+- Input validation with Joi for API endpoints
 
-### Data Efficiency
-- Implement data compression for large sensor payloads
-- Use pagination for historical alert queries
-- Cache frequently accessed geospatial boundaries
-
-## Security Patterns
-- Validate all geospatial coordinates before database storage
-- Implement rate limiting on prediction API calls
-- Use CORS configuration for frontend-backend communication
-- Sanitize sensor data inputs to prevent injection attacks
-
-## Testing Approach
-- Mock geospatial data for consistent testing
-- Simulate WebSocket connections for real-time feature testing
-- Use test data generators for various risk scenarios
-- Implement integration tests for the prediction pipeline flow
-
-## Critical Business Logic
-- **Alert Escalation**: High-risk predictions must trigger immediate notifications
-- **False Positive Handling**: Implement confidence thresholds to reduce noise
-- **Operational Hours**: Consider mine shift schedules for alert routing
-- **Emergency Protocols**: Critical alerts override normal notification channels
+## Testing Strategy
+- Mock AI service responses for consistent testing
+- WebSocket event simulation for frontend testing
+- MongoDB in-memory database for integration tests
+- Geospatial data generators for sensor placement testing
+````

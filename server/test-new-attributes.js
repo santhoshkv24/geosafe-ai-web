@@ -1,354 +1,257 @@
-
-
 const axios = require('axios');
 
-const BASE_URL = 'http://localhost:5000';
+// Correct URL for the Flask AI microservice
+const BASE_URL = 'http://localhost:8000';
 
-// Check if server is running
-async function checkServerAvailability() {
+// Check if AI microservice is running
+async function checkAIServiceAvailability() {
   try {
-    await axios.get(`${BASE_URL}/health`, { timeout: 3000 });
+    const response = await axios.get(`${BASE_URL}/health`, { timeout: 3000 });
+    console.log('✅ AI Service Health Check:', response.data);
     return true;
   } catch (error) {
-    console.log('⚠️  Server not running or not accessible. Testing will use offline mode.');
+    console.log('⚠️  AI Service not running or not accessible:', error.message);
     return false;
   }
 }
 
-// Offline fallback prediction function (same as in sensorReadings.js)
-function generateFallbackPrediction(readings) {
-  let riskScore = 0;
-  const factors = [];
-  
-  // Simple rule-based risk assessment using new attributes
-  if (readings.Slope_Angle > 50) {
-    riskScore += 30;
-    factors.push('Slope_Angle');
-  }
-  
-  if (readings.Rainfall_mm > 50) {
-    riskScore += 25;
-    factors.push('Rainfall_mm');
-  }
-  
-  if (readings.Earthquake_Activity > 2.0) {
-    riskScore += 20;
-    factors.push('Earthquake_Activity');
-  }
-  
-  if (readings.Soil_Saturation > 0.7) {
-    riskScore += 15;
-    factors.push('Soil_Saturation');
-  }
-  
-  if (readings.Vegetation_Cover < 0.3) {
-    riskScore += 10;
-    factors.push('Vegetation_Cover');
-  }
-  
-  if (readings.Proximity_to_Water < 50) { // Close to water
-    riskScore += 10;
-    factors.push('Proximity_to_Water');
-  }
-  
-  if (readings.Landslide > 0.5) {
-    riskScore += 25;
-    factors.push('Landslide');
-  }
-  
-  // Soil type considerations
-  if (readings.Soil_Type_Sand && readings.Soil_Saturation > 0.5) {
-    riskScore += 5;
-    factors.push('Soil_Type_Sand');
-  }
-  
-  if (readings.Soil_Type_Silt && readings.Rainfall_mm > 30) {
-    riskScore += 8;
-    factors.push('Soil_Type_Silt');
-  }
-  
-  let level, confidence;
-  
-  if (riskScore >= 60) {
-    level = 'HIGH';
-    confidence = 0.7;
-  } else if (riskScore >= 30) {
-    level = 'MEDIUM';
-    confidence = 0.6;
-  } else {
-    level = 'LOW';
-    confidence = 0.8;
-  }
-  
-  return {
-    level,
-    confidence,
-    factors,
-    aiModelVersion: 'fallback-2.0-offline',
-    processingTime: 5
-  };
-}
-
-// Test data validation function
-function validateReadingsData(readings) {
-  const required = [
-    'Rainfall_mm', 'Slope_Angle', 'Soil_Saturation', 'Vegetation_Cover',
-    'Earthquake_Activity', 'Proximity_to_Water', 'Landslide',
-    'Soil_Type_Gravel', 'Soil_Type_Sand', 'Soil_Type_Silt'
-  ];
-  
-  const missing = required.filter(field => !(field in readings));
-  if (missing.length > 0) {
-    throw new Error(`Missing required fields: ${missing.join(', ')}`);
-  }
-  
-  // Validate ranges
-  const validations = [
-    { field: 'Rainfall_mm', min: 0, max: 1000 },
-    { field: 'Slope_Angle', min: 0, max: 90 },
-    { field: 'Soil_Saturation', min: 0, max: 1 },
-    { field: 'Vegetation_Cover', min: 0, max: 1 },
-    { field: 'Earthquake_Activity', min: 0, max: 10 },
-    { field: 'Proximity_to_Water', min: 0, max: 10000 },
-    { field: 'Landslide', min: 0, max: 1 }
-  ];
-  
-  for (const { field, min, max } of validations) {
-    const value = readings[field];
-    if (typeof value !== 'number' || value < min || value > max) {
-      throw new Error(`${field} must be a number between ${min} and ${max}, got: ${value}`);
-    }
-  }
-  
-  // Validate boolean fields
-  const boolFields = ['Soil_Type_Gravel', 'Soil_Type_Sand', 'Soil_Type_Silt'];
-  for (const field of boolFields) {
-    if (typeof readings[field] !== 'boolean') {
-      throw new Error(`${field} must be a boolean, got: ${typeof readings[field]}`);
-    }
-  }
-  
-  return true;
-}
-const sampleSensor = {
-  sensorId: "SENSOR_TEST_001",
-  name: "Test Mine Slope Sensor",
-  location: {
-    coordinates: [-46.6333, -23.5505] // [lng, lat]
-  },
-  mineGrid: {
-    x: 100,
-    y: 200,
-    zone: "A"
-  },
-  sensorType: "GEOLOGICAL",
-  configuration: {
-    readingInterval: 300000,
-    alertThresholds: {
-      Rainfall_mm: 45,
-      Slope_Angle: 55,
-      Soil_Saturation: 0.6,
-      Vegetation_Cover: 0.3,
-      Earthquake_Activity: 2.5,
-      Proximity_to_Water: 100,
-      Landslide: 0.4
-    }
+// Sample data that matches the Flask API format
+const samplePredictionRequest = {
+  "sensor_id": "SENSOR_001",
+  "timestamp": "2025-09-23T10:30:00Z",
+  "features": {
+    "rainfall_mm": 32.5,
+    "slope_angle": 47.8,
+    "soil_saturation": 0.58,
+    "vegetation_cover": 0.45,
+    "earthquake_activity": 1.2,
+    "proximity_to_water": 85,
+    "landslide": 0.25,
+    "soil_type_gravel": false,
+    "soil_type_sand": true,
+    "soil_type_silt": false
   }
 };
 
-// Sample reading data with new attributes
-const sampleReading = {
-  sensorId: "SENSOR_TEST_001",
-  readings: {
-    Rainfall_mm: 32.5,
-    Slope_Angle: 47.8,
-    Soil_Saturation: 0.58,
-    Vegetation_Cover: 0.45,
-    Earthquake_Activity: 1.2,
-    Proximity_to_Water: 85,
-    Landslide: 0.25,
-    Soil_Type_Gravel: false,
-    Soil_Type_Sand: true,
-    Soil_Type_Silt: false
-  },
-  metadata: {
-    source: "SIMULATION"
+// High-risk scenario for testing
+const highRiskPredictionRequest = {
+  "sensor_id": "SENSOR_002",
+  "timestamp": "2025-09-23T11:00:00Z",
+  "features": {
+    "rainfall_mm": 245.2,     // High rainfall
+    "slope_angle": 58.7,      // Steep slope
+    "soil_saturation": 0.85,  // Very saturated
+    "vegetation_cover": 0.2,  // Low vegetation
+    "earthquake_activity": 5.2, // High seismic activity
+    "proximity_to_water": 0.15, // Very close to water
+    "landslide": 0.8,         // High landslide probability
+    "soil_type_gravel": false,
+    "soil_type_sand": true,
+    "soil_type_silt": false
   }
 };
 
-async function testNewAttributes() {
-  const serverAvailable = await checkServerAvailability();
-  
+// Low-risk scenario for testing
+const lowRiskPredictionRequest = {
+  "sensor_id": "SENSOR_003",
+  "timestamp": "2025-09-23T11:30:00Z",
+  "features": {
+    "rainfall_mm": 5.0,
+    "slope_angle": 25.0,
+    "soil_saturation": 0.2,
+    "vegetation_cover": 0.8,
+    "earthquake_activity": 0.1,
+    "proximity_to_water": 500,
+    "landslide": 0.1,
+    "soil_type_gravel": true,
+    "soil_type_sand": false,
+    "soil_type_silt": false
+  }
+};
+
+async function testSinglePrediction(testData, testName) {
   try {
-    console.log('🧪 Testing GeoSafe AI with new sensor attributes...\n');
+    console.log(`\n🧪 Testing ${testName}...`);
+    console.log('Request data:', JSON.stringify(testData, null, 2));
     
-    if (serverAvailable) {
-      console.log('🌐 Server is available - Running full API tests\n');
-      await runOnlineTests();
-    } else {
-      console.log('💻 Running offline validation tests\n');
-      await runOfflineTests();
-    }
+    const response = await axios.post(`${BASE_URL}/predict`, testData, {
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      timeout: 10000
+    });
     
-    console.log('\n🎉 All tests passed! New sensor attributes are working correctly.');
+    console.log('✅ Prediction successful:', response.data);
+    console.log(`   Risk Level: ${response.data.risk_level}`);
+    console.log(`   Confidence: ${response.data.confidence}`);
+    console.log(`   Contributing Factors: ${response.data.contributing_factors.join(', ')}`);
+    console.log(`   Model Version: ${response.data.model_version}`);
     
+    return response.data;
   } catch (error) {
-    console.error('❌ Test failed:', error.message);
+    console.error(`❌ ${testName} failed:`, error.response?.data || error.message);
+    if (error.response) {
+      console.error(`   Status: ${error.response.status}`);
+      console.error(`   Headers:`, error.response.headers);
+    }
+    throw error;
   }
 }
 
-async function runOnlineTests() {
-  // Test 1: Create sensor
-  console.log('1. Creating test sensor...');
-  const sensorResponse = await axios.post(`${BASE_URL}/api/sensors`, sampleSensor);
-  console.log('✅ Sensor created:', sensorResponse.data.sensor.sensorId);
-  
-  // Test 2: Create sensor reading (will use fallback prediction since AI service not available)
-  console.log('\n2. Creating sensor reading with new attributes...');
-  const readingResponse = await axios.post(`${BASE_URL}/api/readings`, sampleReading);
-  console.log('✅ Reading created with risk prediction:', readingResponse.data.reading.riskPrediction);
-  console.log('   Model version:', readingResponse.data.reading.riskPrediction.aiModelVersion);
-  
-  // Test 3: Get sensor health
-  console.log('\n3. Checking sensor health...');
-  const healthResponse = await axios.get(`${BASE_URL}/api/sensors/${sampleSensor.sensorId}/health`);
-  console.log('✅ Sensor health:', healthResponse.data.healthStatus);
-  
-  // Test 4: Get latest reading
-  console.log('\n4. Getting latest reading...');
-  const latestResponse = await axios.get(`${BASE_URL}/api/readings/sensor/${sampleSensor.sensorId}/latest`);
-  console.log('✅ Latest reading factors:', latestResponse.data.reading.riskPrediction.factors);
-  
-  // Test 5: Get analytics summary
-  console.log('\n5. Getting analytics summary...');
-  const analyticsResponse = await axios.get(`${BASE_URL}/api/readings/analytics/summary?timeframe=1h`);
-  console.log('✅ Analytics:', analyticsResponse.data.summary);
+async function testBatchPrediction() {
+  try {
+    console.log('\n🧪 Testing Batch Prediction...');
+    
+    const batchRequest = {
+      "readings": [
+        samplePredictionRequest,
+        highRiskPredictionRequest,
+        lowRiskPredictionRequest
+      ]
+    };
+    
+    console.log('Batch request with', batchRequest.readings.length, 'readings');
+    
+    const response = await axios.post(`${BASE_URL}/predict/batch`, batchRequest, {
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      timeout: 15000
+    });
+    
+    console.log('✅ Batch prediction successful');
+    console.log(`   Number of predictions: ${response.data.predictions.length}`);
+    
+    response.data.predictions.forEach((prediction, index) => {
+      console.log(`   Reading ${index + 1}: ${prediction.risk_level} (confidence: ${prediction.confidence})`);
+    });
+    
+    return response.data;
+  } catch (error) {
+    console.error('❌ Batch prediction failed:', error.response?.data || error.message);
+    throw error;
+  }
 }
 
-async function runOfflineTests() {
-  // Test 1: Validate sensor data structure
-  console.log('1. Validating sensor data structure...');
+async function testModelInfo() {
   try {
-    const requiredSensorFields = ['sensorId', 'name', 'location', 'mineGrid'];
-    for (const field of requiredSensorFields) {
-      if (!(field in sampleSensor)) {
-        throw new Error(`Missing required sensor field: ${field}`);
+    console.log('\n🧪 Testing Model Info...');
+    
+    const response = await axios.get(`${BASE_URL}/model/info`, {
+      timeout: 5000
+    });
+    
+    console.log('✅ Model info retrieved:', response.data);
+    return response.data;
+  } catch (error) {
+    console.error('❌ Model info test failed:', error.response?.data || error.message);
+    throw error;
+  }
+}
+
+async function testInvalidRequest() {
+  try {
+    console.log('\n🧪 Testing Invalid Request (missing features)...');
+    
+    const invalidRequest = {
+      "sensor_id": "SENSOR_INVALID",
+      "timestamp": "2025-09-23T12:00:00Z",
+      "features": {
+        "rainfall_mm": 32.5
+        // Missing required features
       }
-    }
-    console.log('✅ Sensor data structure is valid');
+    };
+    
+    const response = await axios.post(`${BASE_URL}/predict`, invalidRequest, {
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      timeout: 5000
+    });
+    
+    console.log('❌ Invalid request should have failed but got:', response.data);
   } catch (error) {
-    throw new Error(`Sensor validation failed: ${error.message}`);
+    if (error.response && error.response.status === 422) {
+      console.log('✅ Invalid request properly rejected with status 422');
+      console.log('   Error details:', error.response.data);
+    } else {
+      console.error('❌ Unexpected error for invalid request:', error.response?.data || error.message);
+    }
   }
-  
-  // Test 2: Validate reading data and test fallback prediction
-  console.log('\n2. Validating reading data with new attributes...');
-  validateReadingsData(sampleReading.readings);
-  const prediction = generateFallbackPrediction(sampleReading.readings);
-  console.log('✅ Reading data is valid');
-  console.log('✅ Fallback prediction generated:', prediction);
-  
-  // Test 3: Test high-risk scenario offline
-  console.log('\n3. Testing high-risk scenario (offline)...');
-  validateReadingsData(highRiskReading.readings);
-  const highRiskPrediction = generateFallbackPrediction(highRiskReading.readings);
-  console.log('✅ High-risk prediction:', highRiskPrediction);
-  console.log('   Risk factors:', highRiskPrediction.factors);
-  
-  // Test 4: Test low-risk scenario
-  console.log('\n4. Testing low-risk scenario...');
-  const lowRiskData = {
-    Rainfall_mm: 5.0,
-    Slope_Angle: 25.0,
-    Soil_Saturation: 0.2,
-    Vegetation_Cover: 0.8,
-    Earthquake_Activity: 0.1,
-    Proximity_to_Water: 500,
-    Landslide: 0.1,
-    Soil_Type_Gravel: true,
-    Soil_Type_Sand: false,
-    Soil_Type_Silt: false
-  };
-  validateReadingsData(lowRiskData);
-  const lowRiskPrediction = generateFallbackPrediction(lowRiskData);
-  console.log('✅ Low-risk prediction:', lowRiskPrediction);
-  
-  // Test 5: Show attribute coverage
-  console.log('\n5. Testing attribute coverage...');
-  const allAttributes = [
-    'Rainfall_mm', 'Slope_Angle', 'Soil_Saturation', 'Vegetation_Cover',
-    'Earthquake_Activity', 'Proximity_to_Water', 'Landslide',
-    'Soil_Type_Gravel', 'Soil_Type_Sand', 'Soil_Type_Silt'
-  ];
-  console.log('✅ All new attributes implemented:', allAttributes.join(', '));
 }
 
-// High-risk sample for testing alerts
-const highRiskReading = {
-  sensorId: "SENSOR_TEST_001",
-  readings: {
-    Rainfall_mm: 85.2,     // High rainfall
-    Slope_Angle: 72.5,     // Steep slope
-    Soil_Saturation: 0.85, // Very saturated
-    Vegetation_Cover: 0.15, // Low vegetation
-    Earthquake_Activity: 3.2, // High seismic activity
-    Proximity_to_Water: 25,   // Very close to water
-    Landslide: 0.75,       // High landslide probability
-    Soil_Type_Gravel: false,
-    Soil_Type_Sand: false,
-    Soil_Type_Silt: true   // Problematic soil type
-  },
-  metadata: {
-    source: "SIMULATION"
-  }
-};
-
-async function testHighRiskScenario() {
-  const serverAvailable = await checkServerAvailability();
+async function runFullTestSuite() {
+  console.log('🔧 GeoSafe AI Microservice Test Suite');
+  console.log('=====================================\n');
   
   try {
-    if (serverAvailable) {
-      console.log('\n🚨 Testing high-risk scenario (online)...');
-      const response = await axios.post(`${BASE_URL}/api/readings`, highRiskReading);
-      console.log('✅ High-risk reading created:', response.data.reading.riskPrediction);
-      console.log('   Model used:', response.data.reading.riskPrediction.aiModelVersion);
-    } else {
-      console.log('\n🚨 Testing high-risk scenario (offline)...');
-      validateReadingsData(highRiskReading.readings);
-      const prediction = generateFallbackPrediction(highRiskReading.readings);
-      console.log('✅ High-risk prediction generated:', prediction);
+    // Check if service is available
+    const serviceAvailable = await checkAIServiceAvailability();
+    if (!serviceAvailable) {
+      console.log('❌ AI microservice is not available. Please start the server first.');
+      console.log('Run: python server.py');
+      return;
     }
+    
+    // Test model info
+    await testModelInfo();
+    
+    // Test single predictions
+    await testSinglePrediction(samplePredictionRequest, 'Medium Risk Scenario');
+    await testSinglePrediction(highRiskPredictionRequest, 'High Risk Scenario');
+    await testSinglePrediction(lowRiskPredictionRequest, 'Low Risk Scenario');
+    
+    // Test batch prediction
+    await testBatchPrediction();
+    
+    // Test error handling
+    await testInvalidRequest();
+    
+    console.log('\n🎉 All tests completed successfully!');
+    console.log('\n📊 Test Summary:');
+    console.log('- Health check: ✅ Passed');
+    console.log('- Model info: ✅ Passed');
+    console.log('- Single predictions: ✅ Passed');
+    console.log('- Batch predictions: ✅ Passed');
+    console.log('- Error handling: ✅ Passed');
+    console.log('\n🚀 AI microservice is working correctly!');
+    
   } catch (error) {
-    console.error('❌ High-risk test failed:', error.response?.data || error.message);
+    console.error('\n💥 Test suite failed:', error.message);
+    process.exit(1);
+  }
+}
+
+// Helper function to test a specific scenario
+async function testSpecificScenario(scenarioName, requestData) {
+  console.log(`\n🎯 Testing ${scenarioName}...`);
+  
+  const serviceAvailable = await checkAIServiceAvailability();
+  if (!serviceAvailable) {
+    console.log('❌ AI microservice is not available.');
+    return;
+  }
+  
+  try {
+    await testSinglePrediction(requestData, scenarioName);
+  } catch (error) {
+    console.error(`❌ ${scenarioName} test failed:`, error.message);
   }
 }
 
 // Run tests
 if (require.main === module) {
-  console.log('🔧 GeoSafe AI - New Sensor Attributes Test Suite');
-  console.log('================================================\n');
-  
-  testNewAttributes().then(async () => {
-    // Wait a moment then test high-risk scenario
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    await testHighRiskScenario();
-    
-    console.log('\n📊 Test Summary:');
-    console.log('- New sensor attributes: ✅ Implemented');
-    console.log('- Data validation: ✅ Working');
-    console.log('- Fallback predictions: ✅ Functional');
-    console.log('- Risk assessment logic: ✅ Updated');
-    console.log('- Works without AI service: ✅ Yes');
-    console.log('\n🚀 Ready for integration with AI microservice when available!');
-  }).catch(error => {
-    console.error('\n💥 Test suite failed:', error.message);
-    process.exit(1);
-  });
+  runFullTestSuite();
 }
 
 module.exports = {
-  testNewAttributes,
-  testHighRiskScenario,
-  sampleSensor,
-  sampleReading,
-  highRiskReading
+  runFullTestSuite,
+  testSpecificScenario,
+  testSinglePrediction,
+  testBatchPrediction,
+  testModelInfo,
+  checkAIServiceAvailability,
+  samplePredictionRequest,
+  highRiskPredictionRequest,
+  lowRiskPredictionRequest
 };

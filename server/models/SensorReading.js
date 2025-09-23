@@ -113,7 +113,7 @@ const sensorReadingSchema = new mongoose.Schema({
   metadata: {
     source: {
       type: String,
-      enum: ['SENSOR', 'SIMULATION', 'MANUAL'],
+      enum: ['SENSOR', 'SIMULATION', 'MANUAL', 'BACKEND_SIMULATION'],
       default: 'SENSOR'
     },
     processed: {

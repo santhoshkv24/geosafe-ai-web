@@ -35,7 +35,7 @@ const sensorValidationSchema = Joi.object({
 // GET /api/sensors - Get all sensors
 router.get('/', async (req, res) => {
   try {
-    const { status, zone, limit = 50, page = 1 } = req.query;
+    const { status, zone, limit = 50, page = 1, includeLatestReading = 'true' } = req.query;
     
     const filter = {};
     if (status) filter.status = status;
@@ -48,8 +48,26 @@ router.get('/', async (req, res) => {
     
     const total = await Sensor.countDocuments(filter);
     
+    // If includeLatestReading is true, fetch the latest reading for each sensor
+    let enrichedSensors = sensors;
+    if (includeLatestReading === 'true') {
+      enrichedSensors = await Promise.all(sensors.map(async (sensor) => {
+        const latestReading = await SensorReading.getLatestForSensor(sensor.sensorId);
+        const sensorObj = sensor.toObject();
+        
+        if (latestReading) {
+          sensorObj.lastReading = latestReading;
+          sensorObj.riskLevel = latestReading.riskPrediction?.level || 'LOW';
+        } else {
+          sensorObj.riskLevel = 'LOW';
+        }
+        
+        return sensorObj;
+      }));
+    }
+    
     res.json({
-      sensors,
+      sensors: enrichedSensors,
       pagination: {
         total,
         page: parseInt(page),
