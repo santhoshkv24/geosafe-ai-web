@@ -1,0 +1,99 @@
+ Brainstormer
+
+Of course! A clear Project Requirements Document (PRD) is the perfect next step. It will serve as your team's single source of truth, ensuring everyone is aligned and building towards the same goal.
+
+Here is a comprehensive PRD for your GeoSafe AI project.
+
+Project Requirements Document: GeoSafe AI
+
+    Version: 1.0
+
+    Author: Santhosh
+
+    Date: September 23, 2025
+
+1. Introduction
+
+GeoSafe AI is an intelligent, real-time monitoring and alert system designed to proactively prevent rockfall accidents in open-pit mines. Traditional mine safety relies on periodic manual inspections, which are often dangerous and reactive. This project addresses that critical gap by leveraging a machine learning model to analyze geological data, predict high-risk zones, and instantly alert operators through an interactive dashboard. This transforms mine safety from a reactive to a proactive and data-driven discipline.
+
+2. Project Goals & Objectives
+
+    Primary Goal: To develop a functional proof-of-concept that successfully demonstrates an end-to-end flow from data input to a real-time, AI-driven alert on a user dashboard.
+
+    Key Objectives:
+
+        Enhance Safety: Provide mine operators with an early warning system to prevent injuries and save lives. 👷‍♀️
+
+        Improve Efficiency: Reduce the time between hazard detection and decision-making.
+
+        Demonstrate Viability: Showcase the power of a modern microservice architecture (MERN + Python) in solving a critical industrial problem.
+
+3. Target Audience
+
+The primary user for this system is the Mine Shift Supervisor / Operator.
+
+    Needs: They need a simple, clear, and unambiguous view of the mine's stability. They must be able to quickly understand where risks are developing and access the necessary information to validate a threat and take action (e.g., evacuate an area, halt operations).
+
+    Pain Points: Currently, they rely on delayed reports and visual inspections, which can miss subtle, developing geological changes. They lack a single, live overview of the entire operational area.
+
+4. Features & Functional Requirements
+
+Here are the core features broken down into user stories.
+
+Epic 1: Real-Time Monitoring Dashboard
+
+    1.1: Geospatial Map View: As a mine operator, I want to see a 2D map of the mine with all active sensor locations clearly plotted, so I can have a complete operational overview.
+
+    1.2: Dynamic Risk Visualization: As a mine operator, I want each sensor icon on the map to be color-coded (e.g., Green for Low, Yellow for Medium, Red for High) based on the latest AI prediction, so I can instantly identify hotspots.
+
+Epic 2: AI Prediction Engine (Microservice)
+
+    2.1: Data Processing Endpoint: The system needs a secure API endpoint (/predict) that accepts geological and sensor data (e.g., slope angle, rainfall, vibration) in JSON format.
+
+    2.2: Predictive Model: The system must use a pre-trained Scikit-learn classification model to analyze the incoming data and return a prediction with a risk level (High, Medium, Low) and a confidence score.
+
+Epic 3: Instant Alerting System
+
+    3.1: Real-Time Notifications: As a mine operator, when the AI predicts a "High" risk event, I want to receive an immediate and unmissable alert on the dashboard (e.g., a flashing map icon and a toast notification), so I am instantly aware of a critical threat.
+
+Epic 4: Data Drill-Down & Verification
+
+    4.1: Alert Details View: As a mine operator, when I click on a high-risk alert, I want a modal/sidebar to open that displays the critical sensor readings that triggered the alert, so I can understand the context.
+
+    4.2: Visual Confirmation: In the alert details view, I want to see the latest available drone or satellite image of the alerted location, so I can visually confirm the physical situation on the ground.
+
+5. System Architecture & Tech Stack
+
+The project will be built using a microservice architecture to separate the user-facing application from the AI processing.
+
+[React Frontend] <== (WebSockets) ==> [Node.js Backend] <== (REST API) ==> [Python AI Microservice]
+
+    Frontend: React, Leaflet.js, Socket.IO Client, Axios
+
+    Backend (Hub): Node.js, Express.js, MongoDB
+
+    AI Microservice: Python, Flask, Scikit-learn, Pandas
+
+6. Assumptions & Constraints
+
+    Assumptions:
+
+        A suitable, clean dataset for landslide/rockfall prediction is available on public repositories like Kaggle.
+
+        Simulated sensor data is an acceptable substitute for live sensor feeds for this hackathon proof-of-concept.
+
+    Constraints:
+
+        The entire project must be developed and demonstrated within the 36-hour hackathon timeframe.
+
+        The solution will be a software-only prototype; no hardware integration is required.
+
+7. Success Metrics
+
+    Primary Metric: A successful, live, end-to-end demonstration of the feature flow: simulated data triggers an AI prediction, which results in a real-time alert on the React dashboard.
+
+    Secondary Metrics:
+
+        A clean, intuitive, and visually appealing user interface.
+
+        Positive feedback from judges on the project's technical architecture, innovation, and real-world impact. ✨
